@@ -1,21 +1,21 @@
 ﻿$NetworkAdapter = "Ethernet0"
+$ComputerName = "wgcl01"
 $IPAddress = 10.2.42.41
 $PrefixLength = 24
 $DefaultGateway = 10.2.42.1
 $DNSServerAddresses = 8.8.8.8,8.8.4.4
-$ComputerName = "wgcl01"
 $WorkgroupName = "wgcl"
 $DomainSuffix = "wgcl.local"
 $NodeList = "wgcl01","wgcl02","wgcl03"
 $NodeIPList = "10.2.42.41","10.2.42.42","10.2.42.43"
 $ClusterName = "wgcl"
-$ClusterIP = 10.4.42.44
+$ClusterIP = "10.2.42.44"
 
 # 
 # Basic configuration
 #
 Rename-Computer $ComputerName
-Rename-Adapter -name $NetworkAdapter -NewName Ethernet
+Rename-NetAdapter -name $NetworkAdapter -NewName Ethernet
 Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -serverAddresses $DNSServerAddresses
 New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress $IPAddress -PrefixLength $PrefixLength -DefaultGateway $DefaultGateway
 Set-DnsClientGlobalSetting -SuffixSearchList @($DomainSuffix)
@@ -35,8 +35,7 @@ Add-Content -Path $env:windir\System32\drivers\etc\hosts -Value "`n${ClusterIP}`
 Add-Content -Path $env:windir\System32\drivers\etc\hosts -Value "`n${ClusterIP}`t${ClusterName}.${DomainSuffix}" -Force
 
 Add-Computer -WorkgroupName $WorkgroupName
-netdom computername $ComputerName /add:$ComputerName.$DomainSuffix
-netdom computername $ComputerName /makeprimary:$ComputerName.$DomainSuffix
+
 
 # Add trusted hosts
 $TrustedHosts = ""
@@ -54,17 +53,23 @@ Set-Item WSMan:\localhost\Client\TrustedHosts -Value "cv01,cv01.commcell.local,c
 # Restart computer to apply changes
 Restart-Computer
 
+netdom computername $ComputerName /add:$ComputerName.$DomainSuffix
+netdom computername $ComputerName /makeprimary:$ComputerName.$DomainSuffix
+
+# Restart computer to apply changes
+Restart-Computer
+
+Install-WindowsFeature -Name Failover-Clustering, FS-FileServer, FS-Resource-Manager, RSAT-Clustering-PowerShell -IncludeAllSubFeature -IncludeManagementTools -verbose
 
 #
 # Create cluster on one node
 #
-Install-WindowsFeature -Name Failover-Clustering, FS-FileServer, FS-Resource-Manager, RSAT-Clustering-PowerShell -IncludeAllSubFeature -IncludeManagementTools -verbose
 
-Test-Cluster -Nodes $NodeList
-New-Cluster -Name $ClusterName -Node $NodeName -StaticAddress $ClusterIP -NoStorage -AdministrativeAccessPoint DNS
+Test-Cluster -Node $NodeList
+New-Cluster -Name $ClusterName -Node $ComputerName -StaticAddress $ClusterIP -NoStorage -AdministrativeAccessPoint DNS
 
 #
 # Add all other nodes (local console on each node)
 #
 
-Add-ClusterNode -Cluster $ClusterName -Name $NodeName
+Add-ClusterNode -Cluster $ClusterName -Name $ComputerName
